@@ -25,27 +25,33 @@ class Dungeon:
         self.__width = width
         self.__height = height
 
+        # Grid Constants.
+        self.__WALL = 0
+        self.__ENTERANCE = 1
+        self.__OPEN = 2
+        self.__CHEST = 3
+        self.__MONSTER = 4
+
         self.__grid = []
         for h in range(height):
-            self.__grid.append( ["|X"] * width )
+            self.__grid.append( [self.__WALL] * width )
 
         # 0 for an enterance on the width
         # 1 for an enterance on the height
-        which = random.randint(0, 1)
         w = 0
         h = 0
 
-        if which == 0:
-            w = random.randint(0, width-1)
+        if random.randint(0, 1) == 0:
+            w = random.randint(1, width-2)
             h = random.randint(0, 1) * (height-1)
         else:
             w = random.randint(0, 1) * (width-1)
-            h = random.randint(0, height-1)
+            h = random.randint(1, height-2)
 
-        self.__grid[h][w] = "EE"
+        self.__grid[h][w] = self.__ENTERANCE
         self.__enterance = (w, h)
         self.__rooms = 0;
-        self.__perimeter = [ (h, w) ]
+        self.buildPerimeter()
 
     def enterance(self): return self.__enterance
     def width(self): return self.__width
@@ -56,12 +62,33 @@ class Dungeon:
        visual = ""
        for row in self.__grid:
            for cell in row:
-               assert len(cell) == 2
-               visual += cell
+               if cell == self.__WALL:      visual += "|X"
+               if cell == self.__ENTERANCE: visual += "EE"
+               if cell == self.__CHEST:     visual += "CC"
+               if cell == self.__MONSTER:   visual += "MM"
+               if cell == self.__OPEN:      visual += "  "
+
            visual += "\n"
        return visual
 
-    def addRoom(self, minwidth, minheight, maxwidth, maxheight):
+    def buildPerimeter(self):
+        self.__perimeter = []
+        j = 1
+        while j < self.__height - 1:
+            i = 1
+            while i < self.__width - 1:
+                if self.__grid[j][i] == self.__WALL:
+                    # If any of the 4 cardinal directions represent a non-space,
+                    # add it to the list.
+                    if self.__grid[j+1][i] != self.__WALL or \
+                       self.__grid[j-1][i] != self.__WALL or \
+                       self.__grid[j][i+1] != self.__WALL or \
+                       self.__grid[j][i-1] != self.__WALL:
+                          self.__perimeter.append( (j, i) )
+                i += 1
+            j += 1
+
+    def addRoom(self, minwidth, minheight, maxwidth, maxheight, chestProbability, monsterProbability):
         width = random.randint(minwidth, maxwidth)
         height = random.randint(minheight, maxheight)
 
@@ -70,8 +97,8 @@ class Dungeon:
 
         # Next, we want to position the new room with an edge on the perimeter,
         # but no other open spaces collide.
-        
-        # First, compile a list of all new room perimeter points and shuffle them.
+
+        # Compile a list of all our new room perimeter points and shuffle them.
         new_room_perimeter = []
         for w in range(width):
             new_room_perimeter.append( [0, w] )
@@ -96,14 +123,14 @@ class Dungeon:
             if left + width >= self.__width: continue
             if top + height >= self.__height: continue
 
-            # Scan the internals of the shape. If any internals equal "  ",
+            # Scan the internals of the shape. If any internals equal an open space
             # reject the room.
             good_room = True
             j = top + 1
             while j < top + height - 1:
                 i = left + 1
                 while i < left + width - 1:
-                    if self.__grid[j][i] == "  ":
+                    if self.__grid[j][i] == self.__OPEN:
                         good_room = False
                     i += 1
                 j += 1
@@ -118,29 +145,47 @@ class Dungeon:
             while j < top + height:
                 i = left
                 while i < left + width:
-                    self.__grid[j][i] = "  "
+                    self.__grid[j][i] = self.__OPEN
                     i += 1
                 j += 1
 
-            # While we're at it, let's rebuild the perimeter array
-            # from scratch.
-            self.__perimeter = []
-            j = 1
-            while j < self.__height - 1:
-                i = 1
-                while i < self.__width - 1:
-                    if self.__grid[j][i] == "  ":
-                        # If any of the 4 cardinal directions represent a non-space,
-                        # add it to the list.
-                        if self.__grid[j+1][i] == "|X" or \
-                           self.__grid[j-1][i] == "|X" or \
-                           self.__grid[j][i+1] == "|X" or \
-                           self.__grid[j][i-1] == "|X":
-                              self.__perimeter.append( (j, i) )
-                    i += 1
-                j += 1
+            # Rebuild the perimeter
+            self.buildPerimeter()
+
+            # Let's place the chest.
+            if random.random() < chestProbability:
+                # A chest will appear anywhere along the edge of the room.
+                x = random.randint(top, top+height-1)
+                y = random.randint(left, left+width-1)
+                
+                if random.randint(0, 1) == 0:
+                    x = top + random.randint(0, 1) * (height-1)
+                else:
+                    y = left + random.randint(0, 1) * (width-1)
+
+                self.__grid[x][y] = self.__CHEST
+
+            # Let's place a monster.
+            if random.random() < monsterProbability:
+                # A monster can appear anywhere
+                x = random.randint(top, top+height-1)
+                y = random.randint(left, left+width-1)
+                self.__grid[x][y] = self.__MONSTER
 
             # We may overwrite the enterance, so let's add that back in.
-            self.__grid[self.__enterance[1]][self.__enterance[0]] = "EE"
+            self.__grid[self.__enterance[1]][self.__enterance[0]] = self.__ENTERANCE
+            self.__rooms += 1
             return True
         return False
+
+    def randomFloor(self, minrooms, maxrooms, minwidth, minheight, maxwidth, maxheight, chestProbability, monsterProbability):
+        rooms = random.randint(minrooms, maxrooms)
+        i = 0
+        while i < rooms:
+            self.addRoom(minwidth, minheight, maxwidth, maxheight, chestProbability, monsterProbability)
+            i += 1
+
+if __name__ == '__main__':
+    f = Dungeon();
+    f.randomFloor(4, 20, 2, 6, 2, 6, 0.1, 0.5)
+    print f
